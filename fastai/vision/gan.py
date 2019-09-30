@@ -110,11 +110,12 @@ class GANTrainer(LearnerCallback):
         "Clamp the weights with `self.clip` if it's not None, return the correct input."
         if self.clip is not None:
             for p in self.critic.parameters(): p.data.clamp_(-self.clip, self.clip)
+        if last_input.dtype == torch.float16: last_target = to_half(last_target)
         return {'last_input':last_input,'last_target':last_target} if self.gen_mode else {'last_input':last_target,'last_target':last_input}
 
     def on_backward_begin(self, last_loss, last_output, **kwargs):
         "Record `last_loss` in the proper list."
-        last_loss = last_loss.detach().cpu()
+        last_loss = last_loss.float().detach().cpu()
         if self.gen_mode:
             self.smoothenerG.add_value(last_loss)
             self.glosses.append(self.smoothenerG.smooth)
@@ -122,7 +123,11 @@ class GANTrainer(LearnerCallback):
         else:
             self.smoothenerC.add_value(last_loss)
             self.closses.append(self.smoothenerC.smooth)
-
+    
+    def on_batch_end(self, **kwargs):
+        self.opt_critic.zero_grad()
+        self.opt_gen.zero_grad()
+    
     def on_epoch_begin(self, epoch, **kwargs):
         "Put the critic or the generator back to eval if necessary."
         self.switch(self.gen_mode)
